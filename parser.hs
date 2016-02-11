@@ -1,6 +1,5 @@
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
-import Control.Monad
 
 data LispVal = Atom String
              | List [LispVal]
@@ -22,15 +21,15 @@ spaces :: Parser ()
 spaces = skipMany1 space
 
 parseString :: Parser LispVal
-parseString = do 
-  char '"'
-  x <- many (noneOf "\"")
-  char '"'
-  return $ String x
+parseString = 
+  char '"' >> do
+    x <- many (noneOf "\"")
+    char '"'
+    return $ String x
 
 parseAtom ::Parser LispVal
 parseAtom = do
-  first <- letter <|> symbol
+  first <- (letter <|> symbol)
   rest <- many (letter <|> digit <|> symbol)
   let atom = first:rest
   return $ case atom of
@@ -39,12 +38,31 @@ parseAtom = do
              _  -> Atom atom
 
 parseNumber :: Parser LispVal
-parseNumber = liftM (Number . read) $ many1 digit
+parseNumber = (Number . read) <$> many1 digit
 
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
             <|> parseString
             <|> parseNumber
+            <|> parseQuoted
+            <|> (char '(' >>
+                 ((try parseList <|> parseDottedList) >>= \x ->
+                 char ')' >>
+                 pure x))
+
+parseList :: Parser LispVal
+parseList = List <$> sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList =
+    DottedList <$> endBy parseExpr spaces <*>
+                   (char '.' >> spaces >> parseExpr)
+
+parseQuoted :: Parser LispVal
+parseQuoted =
+    char '\'' >> do 
+      x <- parseExpr
+      return $ List [Atom "quote", x]
 
 main =
     readExpr <$> head <$> getArgs >>= putStrLn
